@@ -1,0 +1,6 @@
+.serena/
+.claude/
+*.pyc
+__pycache__/
+.ipynb_checkpoints/
+sim.py
