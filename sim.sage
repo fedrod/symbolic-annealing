@@ -862,6 +862,65 @@ TL_none = ['_id']
 
 def inverse_dic(d): return {d[k]:k for k in d.keys()}
 
+def discover_substitutions(ex):
+    '''
+    Automatically discover (variable + constant) binomial patterns in an expression
+    and generate a substitution dictionary for use with Sim() and subSim().
+
+    Walks the AST recursively, finding two-operand sums where one operand is a
+    pure variable and the other is a constant. Generates short variable names
+    (e.g. alpha - 1 -> a1, alpha + 1 -> ap1) and includes negated forms.
+
+    Example:
+        sage: dic1 = discover_substitutions(xp)
+        sage: Sim(x1, subs_dic=dic1)
+    '''
+    subs_dic = {}
+    seen_names = {}
+    add_op = (var('x') + 1).operator()
+
+    def find_binomials(e):
+        if not hasattr(e, 'operator'): return
+        op = e.operator()
+        if op is None: return
+
+        if op == add_op:
+            ops = e.operands()
+            vars_list = [o for o in ops if len(o.variables()) == 1 and o == o.variables()[0]]
+            const_list = [o for o in ops if len(o.variables()) == 0]
+
+            if len(vars_list) == 1 and len(const_list) == 1 and len(ops) == 2:
+                v = vars_list[0]
+                c = const_list[0]
+
+                v_str = str(v)
+                prefix = v_str[0] if v_str else 'v'
+
+                if c < 0:
+                    base_name = f"{prefix}{str(abs(c)).replace('/', '_')}"
+                else:
+                    base_name = f"{prefix}p{str(abs(c)).replace('/', '_')}"
+
+                new_var_name = base_name
+                counter = 1
+                while new_var_name in seen_names and seen_names[new_var_name] != e:
+                    new_var_name = f"{base_name}_{counter}"
+                    counter += 1
+
+                if e not in subs_dic:
+                    from sage.symbolic.ring import SR
+                    new_var = SR.symbol(new_var_name)
+
+                    subs_dic[e] = new_var
+                    subs_dic[-e] = -new_var
+                    seen_names[new_var_name] = e
+
+        for operand in e.operands():
+            find_binomials(operand)
+
+    find_binomials(ex)
+    return subs_dic
+
 
 def Sim(ex,Tmax=100,Tmin=1,steps=100,updates=0, energy = False,ops=(),subs_dic={},_TL=TL_default,specials=None,multiplier=2,on_accept=None):
     '''
